@@ -6,6 +6,7 @@ import {
   aboutPreset,
   categoryMode,
   collapsedServiceCounts,
+  contactOptions,
   heroPreset,
   masterInitial,
   SERVICE_PREVIEW_LIMIT,
@@ -15,8 +16,17 @@ const html = fs.readFileSync("out/index.html", "utf8");
 const css = fs.readFileSync("app/template.css", "utf8");
 const component = fs.readFileSync("app/master-template.tsx", "utf8");
 
-test("static export builds from the empty template", () => {
+test("static export builds from the production client site", () => {
   assert.match(html, /site-root/);
+});
+
+test("production client data is populated", () => {
+  assert.ok(String(site.master.name || "").trim());
+  assert.ok(String(site.location.city || "").trim());
+  assert.ok(String(site.contacts.phoneDisplay || "").trim());
+  assert.ok(Array.isArray(site.reviews));
+  assert.ok(site.reviews.length <= 9);
+  assert.ok(Array.isArray(site.images.gallery));
 });
 
 test("the clean template uses one canonical stylesheet and runtime", () => {
@@ -24,10 +34,14 @@ test("the clean template uses one canonical stylesheet and runtime", () => {
   assert.ok(fs.existsSync("public/template-runtime.js"));
 });
 
-test("portfolio and full gallery remain structural without client photos", () => {
+test("portfolio and full gallery remain structural with or without client photos", () => {
   assert.match(html, /id="mobile-portfolio"/);
   assert.match(html, /Смотреть все работы/);
-  assert.match(html, /mct-work-placeholder/);
+  if (site.images.gallery.length === 0) {
+    assert.match(html, /mct-work-placeholder/);
+  } else {
+    assert.ok(html.includes(site.images.gallery[0].src));
+  }
   assert.doesNotMatch(html, /disabled=""[^>]*Смотреть все работы/);
 });
 
@@ -64,6 +78,41 @@ test("category mechanics stay 1 / 2 / 3+ without a hard cap", () => {
   assert.equal(categoryMode(makeSite(2)), "two");
   assert.equal(categoryMode(makeSite(3)), "many");
   assert.equal(categoryMode(makeSite(8)), "many");
+});
+
+test("contact options support multiple verified channels and legacy messenger data", () => {
+  const phoneOnly = {
+    contacts: {
+      phoneDisplay: "+7 (900) 000-00-00",
+      phoneHref: "tel:+79000000000",
+      channels: [],
+      messenger: null,
+    },
+  };
+  assert.deepEqual(contactOptions(phoneOnly).map((item) => item.kind), ["phone"]);
+
+  const multi = {
+    contacts: {
+      phoneDisplay: "+7 (900) 000-00-00",
+      phoneHref: "tel:+79000000000",
+      channels: [
+        { type: "whatsapp", label: "WhatsApp", url: "https://wa.me/79000000000" },
+        { type: "telegram", label: "Telegram", url: "https://t.me/+79000000000" },
+        { type: "vk", label: "VK", url: "https://vk.ru/example" },
+      ],
+      messenger: null,
+    },
+  };
+  assert.deepEqual(contactOptions(multi).map((item) => item.kind), ["phone", "whatsapp", "telegram", "vk"]);
+
+  const legacy = {
+    contacts: {
+      phoneDisplay: "+7 (900) 000-00-00",
+      phoneHref: "tel:+79000000000",
+      messenger: { type: "telegram", label: "Telegram", url: "https://t.me/example" },
+    },
+  };
+  assert.deepEqual(contactOptions(legacy).map((item) => item.kind), ["phone", "telegram"]);
 });
 
 test("hidden service counts are computed from the responsive layouts", () => {
